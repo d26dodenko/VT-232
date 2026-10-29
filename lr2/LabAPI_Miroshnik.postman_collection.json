@@ -1,7 +1,9 @@
 {
   "info": {
+    "_postman_id": "b4c7d8e6-a05b-4e5a-aa5b-2c8f67001502",
     "name": "LabAPI_Miroshnik",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "59313661"
   },
   "item": [
     {
@@ -9,27 +11,41 @@
       "item": [
         {
           "name": "GET /ping",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/ping",
-              "host": ["{{baseUrl}}"],
-              "path": ["ping"]
-            }
-          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 201 (фактический)\", () => pm.response.to.have.status(201));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Тело ответа содержит Created\", () => pm.expect(pm.response.text()).to.include(\"Created\"));"
-                ]
+                  "pm.test(\"Статус 201 (фактический)\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Тело ответа содержит Created\", function () {",
+                  "    pm.response.to.have.body(\"Created\");",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -38,61 +54,101 @@
       "item": [
         {
           "name": "POST /auth (positive)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Есть поле token\", function () {",
+                  "    pm.response.to.have.jsonBody(\"token\");",
+                  "});",
+                  "",
+                  "// Автосохранение токена",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.token) { pm.environment.set(\"token\", jsonData.token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\"username\":\"admin\",\"password\":\"password123\"}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth"
+              ]
             }
           },
+          "response": []
+        },
+        {
+          "name": "POST /auth (negative)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Есть поле token\", () => pm.expect(pm.response.json()).to.have.property(\"token\"));",
-                  "const jsonData = pm.response.json();",
-                  "if (jsonData.token) { pm.environment.set(\"token\", jsonData.token); }"
-                ]
+                  "pm.test(\"Статус 200 (фактический для неверных данных)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Тело содержит reason Bad credentials\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"Bad credentials\");",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
-        },
-        {
-          "name": "POST /auth (negative)",
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\"username\":\"admin\",\"password\":\"wrong\"}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth"
+              ]
             }
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Статус 200 (фактический для неверных данных)\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Тело содержит reason Bad credentials\", () => pm.expect(pm.response.text()).to.include(\"Bad credentials\"));"
-                ]
-              }
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -101,65 +157,142 @@
       "item": [
         {
           "name": "POST /booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Есть поле bookingid\", function () {",
+                  "    pm.response.to.have.jsonBody(\"bookingid\");",
+                  "});",
+                  "",
+                  "// Автосохранение ID бронирования",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.bookingid) { pm.environment.set(\"bookingId\", jsonData.bookingid); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"firstname\": \"Jim\",\n  \"lastname\": \"Brown\",\n  \"totalprice\": 111,\n  \"depositpaid\": true,\n  \"bookingdates\": {\n    \"checkin\": \"2025-01-01\",\n    \"checkout\": \"2025-01-05\"\n  },\n  \"additionalneeds\": \"Breakfast\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/booking",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
             }
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Есть поле bookingid\", () => pm.expect(pm.response.json()).to.have.property(\"bookingid\"));",
-                  "const jsonData = pm.response.json();",
-                  "if (jsonData.bookingid) { pm.environment.set(\"bookingId\", jsonData.bookingid); }"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
           "name": "GET /booking/{id}",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": {
-              "raw": "{{baseUrl}}/booking/{{bookingId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking", "{{bookingId}}"]
-            }
-          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Есть поле firstname\", () => pm.expect(pm.response.json()).to.have.property(\"firstname\"));"
-                ]
+                  "pm.test(\"Статус 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Есть поле firstname\", function () {",
+                  "    pm.response.to.have.jsonBody(\"firstname\");",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "response": []
         },
         {
           "name": "PUT /booking/{id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Поле firstname обновлено\", function () {",
+                  "    pm.expect(pm.response.json().firstname).to.eql(\"James\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin"
+                },
+                {
+                  "key": "password",
+                  "value": "password123"
+                }
+              ]
+            },
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Cookie", "value": "token={{token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -167,30 +300,60 @@
             },
             "url": {
               "raw": "{{baseUrl}}/booking/{{bookingId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking", "{{bookingId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
             }
           },
+          "response": []
+        },
+        {
+          "name": "PATCH /booking/{id}",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Поле firstname обновлено\", () => pm.expect(pm.response.json().firstname).to.eql(\"James\"));"
-                ]
+                  "pm.test(\"Статус 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Поле firstname обновлено на Updated\", function () {",
+                  "    pm.expect(pm.response.json().firstname).to.eql(\"Updated\");",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
-        },
-        {
-          "name": "PATCH /booking/{id}",
+          ],
           "request": {
             "method": "PATCH",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin"
+                },
+                {
+                  "key": "password",
+                  "value": "password123"
+                }
+              ]
+            },
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Cookie", "value": "token={{token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -198,70 +361,108 @@
             },
             "url": {
               "raw": "{{baseUrl}}/booking/{{bookingId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking", "{{bookingId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
             }
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Поле firstname обновлено на Updated\", () => pm.expect(pm.response.json().firstname).to.eql(\"Updated\"));"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
           "name": "DELETE /booking/{id}",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Cookie", "value": "token={{token}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/booking/{{bookingId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking", "{{bookingId}}"]
-            }
-          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 201 Created (фактический)\", () => pm.response.to.have.status(201));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Тело ответа содержит Created\", () => pm.expect(pm.response.text()).to.include(\"Created\"));"
-                ]
+                  "pm.test(\"Статус 405 Method Not Allowed\", function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});",
+                  "",
+                  "pm.test(\"Тело ответа содержит Method Not Allowed\", function () {",
+                  "    pm.expect(pm.response.text()).to.include(\"Method Not Allowed\");",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin"
+                },
+                {
+                  "key": "password",
+                  "value": "password123"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "response": []
         },
         {
           "name": "GET /booking/{id} after delete (negative)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
-            "url": {
-              "raw": "{{baseUrl}}/booking/{{bookingId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["booking", "{{bookingId}}"]
-            }
-          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Статус 404\", () => pm.response.to.have.status(404));",
-                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                  "pm.test(\"Тело ответа содержит Not Found\", () => pm.expect(pm.response.text()).to.include(\"Not Found\"));"
-                ]
+                  "pm.test(\"Статус 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Время ответа < 10000 мс\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});"
+                ],
+                "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     }

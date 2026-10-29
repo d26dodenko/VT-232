@@ -1,0 +1,269 @@
+{
+  "info": {
+    "name": "LabAPI_Miroshnik",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /ping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ping",
+              "host": ["{{baseUrl}}"],
+              "path": ["ping"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 201 (фактический)\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Тело ответа содержит Created\", () => pm.expect(pm.response.text()).to.include(\"Created\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth (positive)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Есть поле token\", () => pm.expect(pm.response.json()).to.have.property(\"token\"));",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.token) { pm.environment.set(\"token\", jsonData.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth (negative)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"admin\",\"password\":\"wrong\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200 (фактический для неверных данных)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Тело содержит reason Bad credentials\", () => pm.expect(pm.response.text()).to.include(\"Bad credentials\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Booking",
+      "item": [
+        {
+          "name": "POST /booking",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"Jim\",\n  \"lastname\": \"Brown\",\n  \"totalprice\": 111,\n  \"depositpaid\": true,\n  \"bookingdates\": {\n    \"checkin\": \"2025-01-01\",\n    \"checkout\": \"2025-01-05\"\n  },\n  \"additionalneeds\": \"Breakfast\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Есть поле bookingid\", () => pm.expect(pm.response.json()).to.have.property(\"bookingid\"));",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.bookingid) { pm.environment.set(\"bookingId\", jsonData.bookingid); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /booking/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking", "{{bookingId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Есть поле firstname\", () => pm.expect(pm.response.json()).to.have.property(\"firstname\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /booking/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "token={{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"James\",\n  \"lastname\": \"Brown\",\n  \"totalprice\": 150,\n  \"depositpaid\": true,\n  \"bookingdates\": {\n    \"checkin\": \"2025-01-01\",\n    \"checkout\": \"2025-01-10\"\n  },\n  \"additionalneeds\": \"Lunch\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking", "{{bookingId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Поле firstname обновлено\", () => pm.expect(pm.response.json().firstname).to.eql(\"James\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /booking/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "token={{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"firstname\":\"Updated\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking", "{{bookingId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Поле firstname обновлено на Updated\", () => pm.expect(pm.response.json().firstname).to.eql(\"Updated\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /booking/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Cookie", "value": "token={{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking", "{{bookingId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 201 Created (фактический)\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Тело ответа содержит Created\", () => pm.expect(pm.response.text()).to.include(\"Created\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /booking/{id} after delete (negative)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["booking", "{{bookingId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Статус 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test(\"Тело ответа содержит Not Found\", () => pm.expect(pm.response.text()).to.include(\"Not Found\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

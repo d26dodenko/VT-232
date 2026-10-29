@@ -1,5 +1,5 @@
 import pytest
-from order_calculator import calculate_order_total
+from lr1.order_calculator import calculate_order_total
 
 
 class TestPositiveCases:

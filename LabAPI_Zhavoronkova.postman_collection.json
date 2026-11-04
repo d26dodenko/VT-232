@@ -1,0 +1,819 @@
+{
+  "info": {
+    "_postman_id": "9f8d4a06-3c1a-42c3-94b1-ce789d1b3a52",
+    "name": "LabAPI_Zhavoronkova",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "59193174",
+    "_collection_link": "https://go.postman.co/collection/59193174-9f8d4a06-3c1a-42c3-94b1-ce789d1b3a52?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "TC-01",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();\r\nif (res.token) {\r\n    pm.environment.set(\"token\", res.token);\r\n}\r\n\r\npm.test(\"Статус 200\", () => pm.response.to.have.status(200));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"username\": \"admin\",\r\n  \"password\": \"password123\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth"
+              ]
+            },
+            "description": "**Цель:** Получение токена авторизации.  \n**Входные данные:** username=admin, password=password123.  \n**Ожидаемый результат:** Код 200, наличие поля token."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-08",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"username\":\"admin\", \r\n    \"password\":\"wrong\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Booking",
+      "item": [
+        {
+          "name": "GET Booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            },
+            "description": "**Цель:** Получение списка всех бронирований.  \n**Входные данные:** нет.  \n**Ожидаемый результат:** Код 200, массив с bookingId."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-02",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();\r\nif (res.bookingid) {\r\n    pm.environment.set(\"bookingId\", res.bookingid);\r\n}\r\n\r\npm.test(\"Статус 200\", () => pm.response.to.have.status(200));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 111,\r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  },\r\n  \"additionalneeds\": \"Breakfast\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            },
+            "description": "**Цель:** Создание нового бронирования.  \n**Входные данные:** JSON с данными гостя.  \n**Ожидаемый результат:** Код 200, наличие поля bookingId."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-03",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "**Цель:** Получение данных о конкретном бронировании.  \n**Входные данные:** bookingId (из переменной).  \n**Ожидаемый результат:** Код 200, JSON с данными."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-04",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "token={{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"James\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 150,\r\n  \"depositpaid\": false,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-02-01\",\r\n    \"checkout\": \"2024-02-10\"\r\n  },\r\n  \"additionalneeds\": \"Dinner\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "**Цель:** Полное обновление бронирования.  \n**Входные данные:** bookingId, токен (Cookie), полный JSON.  \n**Ожидаемый результат:** Код 200, обновленные данные."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-05",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "token={{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"NewName\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "**Цель:** Частичное обновление (изменение имени).  \n**Входные данные:** bookingId, токен, JSON с полем firstname.  \n**Ожидаемый результат:** Код 200, имя изменено."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-06",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\", () => pm.response.to.have.status(201));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "token={{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "**Цель:** Удаление бронирования.  \n**Входные данные:** bookingId, токен.  \n**Ожидаемый результат:** Код 201 (по факту у этого API), хотя по REST ожидается 200/204."
+          },
+          "response": []
+        },
+        {
+          "name": "TC-07",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 404\", () => pm.response.to.have.status(404));\r\npm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ содержит данные\", () => pm.expect(pm.response.text()).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-09",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-10",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "token=invalid_token"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/booking/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-11",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/booking/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking",
+                "999999"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-12",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstname\": \"Jim\",",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-13",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstname\": \"Jim\",\r\n    \"lastname\": \"Brown\",\r\n    \"totalprice\": \"сто\",\r\n    \"depositpaid\": true,\r\n    \"bookingdates\": {\r\n        \"checkin\": \"2024-01-01\",\r\n        \"checkout\": \"2024-01-05\"\r\n    }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-14",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstname\": \"Jim\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-15",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 111, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-16",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 111,\r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-17",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 0, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-18",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": -100, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-19",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 999999999999, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-01\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-20",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 111, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"2024-01-10\",\r\n    \"checkout\": \"2024-01-01\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "TC-21",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Время ответа < 2000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(2000));\r\npm.test(\"Ответ не пустой\", () => pm.expect(pm.response.text()).to.not.be.empty);\r\npm.test(\"Код ответа содержит ошибку\", () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 405, 500]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"firstname\": \"Jim\",\r\n  \"lastname\": \"Brown\",\r\n  \"totalprice\": 111, \r\n  \"depositpaid\": true,\r\n  \"bookingdates\": {\r\n    \"checkin\": \"01-01-2024\",\r\n    \"checkout\": \"2024-01-05\"\r\n  }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/booking",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET Ping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            },
+            "description": "**Цель:** Проверка доступности сервиса.  \n**Входные данные:** нет.  \n**Ожидаемый результат:** Код 200."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1304 @@
+{
+ "info": {
+  "_postman_id": "b7e3c1a2-4f5d-4a6b-9c8d-1e2f3a4b5c6d",
+  "name": "LabAPI_Lutsenko",
+  "description": "ЛР №3 «Интеграционное и API-тестирование». Автор: Луценко Максим. Сервис: Restful-Booker. Запуск: импортировать коллекцию и окружение LabAPI_Lutsenko_Env, выбрать окружение, Collection Runner, 1 итерация, порядок сверху вниз. Токен и bookingId передаются через переменные. Публичное API сбрасывает данные примерно каждые 10 минут. Проверки фиксируют фактическое поведение; расхождения с REST помечены D1–D12 (см. отчёт).",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "item": [
+  {
+   "name": "Auth",
+   "item": [
+    {
+     "name": "AUTH-01 POST /auth — валидные данные",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Accept",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/auth",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "auth"
+       ]
+      },
+      "description": "Цель: получить токен. Вход: admin/password123. Ожидание: 200, поле token; сохраняется в переменную окружения token.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\"username\": \"admin\", \"password\": \"password123\"}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Поле token есть и непустое\", () => { const j = pm.response.json(); pm.expect(j).to.have.property(\"token\"); pm.expect(j.token).to.be.a(\"string\").and.not.empty; });\npm.environment.set(\"token\", pm.response.json().token);"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "AUTH-02 POST /auth — неверный пароль",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Accept",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/auth",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "auth"
+       ]
+      },
+      "description": "Цель: негативная аутентификация. Вход: admin/wrongpass. Ожидание по REST: 401; факт: 200 {reason: Bad credentials} — расхождение D1.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\"username\": \"admin\", \"password\": \"wrongpass\"}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"Статус 200 (факт; по REST 401 — D1)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"reason = Bad credentials\", () => pm.expect(pm.response.json().reason).to.eql(\"Bad credentials\"));\npm.test(\"Токен не выдан\", () => pm.expect(pm.response.json()).to.not.have.property(\"token\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "AUTH-03 POST /auth — неверный логин",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Accept",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/auth",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "auth"
+       ]
+      },
+      "description": "Цель: негативная аутентификация. Вход: hacker/password123. Ожидание по REST: 401; факт: 200 {reason: Bad credentials} — расхождение D1.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\"username\": \"hacker\", \"password\": \"password123\"}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"Статус 200 (факт; по REST 401 — D1)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"reason = Bad credentials\", () => pm.expect(pm.response.json().reason).to.eql(\"Bad credentials\"));\npm.test(\"Токен не выдан\", () => pm.expect(pm.response.json()).to.not.have.property(\"token\"));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Health",
+   "item": [
+    {
+     "name": "HLT-01 GET /ping — health-check",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Accept",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/ping",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "ping"
+       ]
+      },
+      "description": "Цель: проверка работоспособности. Вход: нет. Ожидание по REST: 200/204; факт: 201 Created — расхождение D3."
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"Статус 201 (факт; по REST 200/204 — D3)\", () => pm.response.to.have.status(201));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Created\", () => pm.expect(pm.response.text()).to.eql(\"Created\"));"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "HLT-02 POST /ping — чужой метод",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Accept",
+        "value": "application/json"
+       }
+      ],
+      "url": {
+       "raw": "{{baseUrl}}/ping",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "ping"
+       ]
+      },
+      "description": "Цель: ошибка метода. Вход: нет тела. Ожидание по REST: 405; факт: 404 Not Found — расхождение D11."
+     },
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test(\"Статус 404 (факт; по REST 405 — D11)\", () => pm.response.to.have.status(404));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Not Found\", () => pm.expect(pm.response.text()).to.eql(\"Not Found\"));"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Booking",
+   "item": [
+    {
+     "name": "01_Positive",
+     "item": [
+      {
+       "name": "BK-P01 POST /booking — создание",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: создать бронирование. Вход: валидный JSON (150, depositpaid true, 2026-12-01..05, Breakfast). Ожидание по док.: 201; факт: 200 без Location — D2. bookingid сохраняется в bookingId.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST/док. 201 — D2)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"bookingid — число\", () => pm.expect(pm.response.json().bookingid).to.be.a(\"number\"));\npm.test(\"lastname совпадает с отправленным\", () => pm.expect(pm.response.json().booking.lastname).to.eql(\"LutsenkoLab3\"));\npm.environment.set(\"bookingId\", pm.response.json().bookingid);"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-P02 GET /booking/{{bookingId}} — получение",
+       "request": {
+        "method": "GET",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: прочитать созданную бронь. Вход: id из bookingId. Ожидание: 200, поля совпадают с созданием."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"firstname = Maxim\", () => pm.expect(pm.response.json().firstname).to.eql(\"Maxim\"));\npm.test(\"totalprice = 150\", () => pm.expect(pm.response.json().totalprice).to.eql(150));\npm.test(\"checkin = 2026-12-01\", () => pm.expect(pm.response.json().bookingdates.checkin).to.eql(\"2026-12-01\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-P03 GET /booking — фильтр по имени",
+       "request": {
+        "method": "GET",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking?firstname=Maxim&lastname=LutsenkoLab3",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ],
+         "query": [
+          {
+           "key": "firstname",
+           "value": "Maxim"
+          },
+          {
+           "key": "lastname",
+           "value": "LutsenkoLab3"
+          }
+         ]
+        },
+        "description": "Цель: фильтры списка. Вход: firstname=Maxim, lastname=LutsenkoLab3. Ожидание: 200, массив содержит созданный bookingId."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Ответ — массив\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));\npm.test(\"Массив содержит созданный bookingId\", () => { const ids = pm.response.json().map(b => b.bookingid); pm.expect(ids).to.include(Number(pm.environment.get(\"bookingId\"))); });"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-X01 GET /booking/{{bookingId}} — Accept: text/plain",
+       "request": {
+        "method": "GET",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "text/plain"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: пасхалка контент-переговоров. Вход: id, Accept: text/plain. Ожидание: 418 I'm a Teapot — особенность D12."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 418 (пасхалка — D12)\", () => pm.response.to.have.status(418));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = I'm a Teapot\", () => pm.expect(pm.response.text()).to.eql(\"I'm a Teapot\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-P04 PUT /booking/{{bookingId}} — полное обновление",
+       "request": {
+        "method": "PUT",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token={{token}}"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: полное обновление. Вход: полный JSON (MaximUpdated, 300, false, 2026-12-10..12, Lunch), Cookie token={{token}}. Ожидание: 200, все поля обновлены.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"MaximUpdated\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 300, \"depositpaid\": false, \"bookingdates\": {\"checkin\": \"2026-12-10\", \"checkout\": \"2026-12-12\"}, \"additionalneeds\": \"Lunch\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"firstname обновлён\", () => pm.expect(pm.response.json().firstname).to.eql(\"MaximUpdated\"));\npm.test(\"totalprice = 300\", () => pm.expect(pm.response.json().totalprice).to.eql(300));\npm.test(\"depositpaid = false\", () => pm.expect(pm.response.json().depositpaid).to.eql(false));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-P05 PATCH /booking/{{bookingId}} — частичное обновление",
+       "request": {
+        "method": "PATCH",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token={{token}}"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: частичное обновление. Вход: {firstname: MaximPatched, additionalneeds: Dinner}, Cookie token={{token}}. Ожидание: 200, остальные поля не изменены.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"MaximPatched\", \"additionalneeds\": \"Dinner\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"firstname изменён\", () => pm.expect(pm.response.json().firstname).to.eql(\"MaximPatched\"));\npm.test(\"lastname не изменён\", () => pm.expect(pm.response.json().lastname).to.eql(\"LutsenkoLab3\"));\npm.test(\"totalprice остался 300\", () => pm.expect(pm.response.json().totalprice).to.eql(300));"
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "02_Negative",
+     "item": [
+      {
+       "name": "BK-N01 PUT без токена",
+       "request": {
+        "method": "PUT",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: защита обновления. Вход: валидный JSON, Cookie отсутствует. Ожидание по REST: 401; факт: 403 Forbidden — D5.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"NoAuth\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 403 (факт; по REST 401 — D5)\", () => pm.response.to.have.status(403));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Forbidden\", () => pm.expect(pm.response.text()).to.eql(\"Forbidden\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N02 PUT с некорректным токеном",
+       "request": {
+        "method": "PUT",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token=invalidtoken123"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: валидация токена. Вход: Cookie token=invalidtoken123. Ожидание по REST: 401; факт: 403 Forbidden — D5.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"NoAuth\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 403 (факт; по REST 401 — D5)\", () => pm.response.to.have.status(403));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Forbidden\", () => pm.expect(pm.response.text()).to.eql(\"Forbidden\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N03 DELETE без токена",
+       "request": {
+        "method": "DELETE",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: защита удаления. Вход: id, Cookie отсутствует. Ожидание по REST: 401; факт: 403 Forbidden — D5."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 403 (факт; по REST 401 — D5)\", () => pm.response.to.have.status(403));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Forbidden\", () => pm.expect(pm.response.text()).to.eql(\"Forbidden\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N04 GET /booking/99999999 — несуществующий id",
+       "request": {
+        "method": "GET",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/99999999",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "99999999"
+         ]
+        },
+        "description": "Цель: несуществующий ресурс. Вход: id=99999999. Ожидание: 404 Not Found."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 404\", () => pm.response.to.have.status(404));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Not Found\", () => pm.expect(pm.response.text()).to.eql(\"Not Found\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N05 POST /booking — некорректный JSON",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: битое тело запроса. Вход: raw '{\"firstname\": \"Max\", \"lastname\": }'. Ожидание: 400 Bad Request.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Max\", \"lastname\": }",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 400\", () => pm.response.to.have.status(400));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Bad Request\", () => pm.expect(pm.response.text()).to.eql(\"Bad Request\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N06 POST /booking — строка в totalprice",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: неверный тип данных. Вход: totalprice=\"abc\". Ожидание по REST: 400; факт: 200, totalprice=null — дефект D7.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": \"abc\", \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST 400 — D7)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"ДЕФЕКТ: totalprice молча приведён к null\", () => pm.expect(pm.response.json().booking.totalprice).to.eql(null));\npm.test(\"bookingid присутствует\", () => pm.expect(pm.response.json()).to.have.property(\"bookingid\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N07 POST /booking — нет bookingdates",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: отсутствие обязательного поля. Вход: JSON без bookingdates. Ожидание по REST: 400; факт: 500 — дефект D6.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 500 (факт; по REST 400 — D6)\", () => pm.response.to.have.status(500));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Internal Server Error\", () => pm.expect(pm.response.text()).to.eql(\"Internal Server Error\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N08 PATCH несуществующего id",
+       "request": {
+        "method": "PATCH",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token={{token}}"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/99999999",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "99999999"
+         ]
+        },
+        "description": "Цель: обновление несуществующего ресурса. Вход: id=99999999, {firstname: Ghost}, валидный токен. Ожидание по REST: 404; факт: 405 — дефект D8.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Ghost\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 405 (факт; по REST 404 — D8)\", () => pm.response.to.have.status(405));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Method Not Allowed\", () => pm.expect(pm.response.text()).to.eql(\"Method Not Allowed\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-N09 DELETE несуществующего id",
+       "request": {
+        "method": "DELETE",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token={{token}}"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/99999999",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "99999999"
+         ]
+        },
+        "description": "Цель: удаление несуществующего ресурса. Вход: id=99999999, валидный токен. Ожидание по REST: 404; факт: 405 — дефект D8."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 405 (факт; по REST 404 — D8)\", () => pm.response.to.have.status(405));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Method Not Allowed\", () => pm.expect(pm.response.text()).to.eql(\"Method Not Allowed\"));"
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "03_Boundary",
+     "item": [
+      {
+       "name": "BK-B01 POST /booking — пустые строки",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: граничные строки. Вход: firstname=\"\", lastname=\"\". Ожидание по REST: 400; факт: 200 — дефект D9.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"\", \"lastname\": \"\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST 400 — D9)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Пустой firstname принят\", () => pm.expect(pm.response.json().booking.firstname).to.eql(\"\"));\npm.test(\"bookingid присутствует\", () => pm.expect(pm.response.json()).to.have.property(\"bookingid\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B02 POST /booking — firstname 1200 символов",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: очень длинная строка. Вход: firstname=1200 символов A (pre-request). Ожидание по REST: 400/413; факт: 200 без усечения — D9.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"{{longStr}}\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "prerequest",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.variables.set(\"longStr\", \"A\".repeat(1200));"
+          ]
+         }
+        },
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; лимита длины нет — D9)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"1200 символов сохранены без усечения\", () => pm.expect(pm.response.json().booking.firstname.length).to.eql(1200));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B03 POST /booking — totalprice = 0",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: нижняя граница цены. Вход: totalprice=0. Ожидание: 200, значение сохранено.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 0, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"totalprice = 0\", () => pm.expect(pm.response.json().booking.totalprice).to.eql(0));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B04 POST /booking — totalprice = -100",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: отрицательная цена. Вход: totalprice=-100. Ожидание по REST: 400; факт: 200 — дефект D9.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": -100, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST 400 — D9)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"ДЕФЕКТ: отрицательная цена принята\", () => pm.expect(pm.response.json().booking.totalprice).to.eql(-100));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B05 POST /booking — totalprice = 999999999999999",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: очень большое число. Вход: totalprice=999999999999999. Ожидание по REST: 400; факт: 200 — D9.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 999999999999999, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-01\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; верхнего лимита нет — D9)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"totalprice = 999999999999999\", () => pm.expect(pm.response.json().booking.totalprice).to.eql(999999999999999));\npm.test(\"bookingid присутствует\", () => pm.expect(pm.response.json()).to.have.property(\"bookingid\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B06 POST /booking — checkout раньше checkin",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: инверсия дат. Вход: checkin=2026-12-10, checkout=2026-12-01. Ожидание по REST: 400; факт: 200 — дефект D9.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"2026-12-10\", \"checkout\": \"2026-12-01\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST 400 — D9)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"ДЕФЕКТ: checkout < checkin принят\", () => { const d = pm.response.json().booking.bookingdates; pm.expect(d.checkout < d.checkin).to.eql(true); });"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-B07 POST /booking — невалидная дата",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Content-Type",
+          "value": "application/json"
+         },
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking"
+         ]
+        },
+        "description": "Цель: невалидный формат даты. Вход: checkin=\"not-a-date\". Ожидание по REST: 400; факт: 200, дата=\"0NaN-aN-aN\" — дефект D10.",
+        "body": {
+         "mode": "raw",
+         "raw": "{\"firstname\": \"Maxim\", \"lastname\": \"LutsenkoLab3\", \"totalprice\": 150, \"depositpaid\": true, \"bookingdates\": {\"checkin\": \"not-a-date\", \"checkout\": \"2026-12-05\"}, \"additionalneeds\": \"Breakfast\"}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 200 (факт; по REST 400 — D10)\", () => pm.response.to.have.status(200));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"ДЕФЕКТ: дата искажена в 0NaN-aN-aN\", () => pm.expect(pm.response.json().booking.bookingdates.checkin).to.eql(\"0NaN-aN-aN\"));"
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "04_Cleanup",
+     "item": [
+      {
+       "name": "BK-C01 DELETE /booking/{{bookingId}} — удаление",
+       "request": {
+        "method": "DELETE",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         },
+         {
+          "key": "Cookie",
+          "value": "token={{token}}"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: удалить бронь. Вход: id из bookingId, Cookie token={{token}}. Ожидание по REST: 204/200; факт: 201 Created — D4."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 201 (факт; по REST 204/200 — D4)\", () => pm.response.to.have.status(201));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Created\", () => pm.expect(pm.response.text()).to.eql(\"Created\"));"
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "name": "BK-C02 GET /booking/{{bookingId}} — после удаления",
+       "request": {
+        "method": "GET",
+        "header": [
+         {
+          "key": "Accept",
+          "value": "application/json"
+         }
+        ],
+        "url": {
+         "raw": "{{baseUrl}}/booking/{{bookingId}}",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "booking",
+          "{{bookingId}}"
+         ]
+        },
+        "description": "Цель: повторное получение удалённой брони. Вход: тот же id. Ожидание: 404 Not Found."
+       },
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "type": "text/javascript",
+          "exec": [
+           "pm.test(\"Статус 404\", () => pm.response.to.have.status(404));\npm.test(\"Время ответа < 3000 мс\", () => pm.expect(pm.response.responseTime).to.be.below(3000));\npm.test(\"Тело = Not Found\", () => pm.expect(pm.response.text()).to.eql(\"Not Found\"));"
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

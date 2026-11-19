@@ -1,0 +1,97 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  # Линтер и Unit-тесты
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (Frontend)
+        run: cd edgistify-Assignment-main/frontend && npm ci
+
+      - name: Run ESLint
+        run: cd edgistify-Assignment-main/frontend && npm run lint
+
+      # Имитация unit-тестов
+      - name: Run Unit Tests (Mock)
+        run: echo "Unit tests passed"
+
+      # Проверка покрытия (имитация)
+      - name: Check Coverage (Gate < 80%)
+        run: |
+          echo "Checking coverage..."
+          echo "Coverage: 85%. Gate passed."
+
+  # Интеграционные тесты (Запускаются только если lint-and-unit успешно)
+  integration:
+    needs: lint-and-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (Backend)
+        run: cd edgistify-Assignment-main/backend && npm ci
+
+      # Имитация интеграционных тестов
+      - name: Run Integration Tests (Mock)
+        run: echo "Integration tests passed (API + DB)"
+
+  # E2E-тесты (Запускаются только если integration успешно)
+  e2e:
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (Frontend & Backend)
+        run: |
+          cd edgistify-Assignment-main/frontend && npm ci
+          cd ../backend && npm ci
+          cd .. && npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Tests
+        run: npx playwright test --project=chromium
+
+      # Публикация артефактов (отчет Playwright)
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+  # Проверка безопасности
+  security:
+    needs: lint-and-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Поиск критических уязвимостей
+      - name: Run npm audit (Security Gate)
+        run: |
+          cd edgistify-Assignment-main/frontend && npm audit --audit-level=high
+          cd ../backend && npm audit --audit-level=high

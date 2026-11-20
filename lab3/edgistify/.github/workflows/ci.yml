@@ -1,0 +1,171 @@
+name: Edgistify CI/CD Quality Gates
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # ==========================================
+  # STAGE 1: Lint + Unit Tests + Coverage Gate
+  # ==========================================
+  unit-and-lint:
+    name: Lint & Unit Tests (Coverage >= 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install QA dependencies
+        run: pip install -r qa_automation/requirements.txt
+
+      - name: Run Linter (Flake8)
+        run: flake8 qa_automation --max-line-length=120
+
+      - name: Run Unit Tests with 80% Coverage Quality Gate
+        run: |
+          pytest qa_automation/tests/unit \
+            --cov=qa_automation/tests/unit \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=80 \
+            --html=unit-report.html --self-contained-html
+
+      - name: Upload Coverage & Unit Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage-reports
+          path: |
+            htmlcov/
+            coverage.xml
+            unit-report.html
+
+  # ==========================================
+  # STAGE 2: Security Quality Gate (Bandit & Safety)
+  # ==========================================
+  security-check:
+    name: Security Scan (Bandit & Safety)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Security Scanners
+        run: pip install bandit safety
+
+      - name: Bandit SAST (Fail on High/Critical)
+        run: bandit -r qa_automation -lll -iii
+
+      - name: Safety Dependency Check
+        run: safety check -r qa_automation/requirements.txt
+
+  # ==========================================
+  # STAGE 3: Build App & Integration Tests
+  # Блокируется, если упали unit-and-lint или security-check
+  # ==========================================
+  build-and-integration:
+    name: Build & API Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-and-lint, security-check]
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Backend & Frontend Dependencies and Build
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci && npm run build
+
+      - name: Start Backend & Run Integration Tests
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/edgistify
+          PORT: 8080
+          JWT_SECRET: super_secret_test_key_123
+        run: |
+          pip install -r qa_automation/requirements.txt
+          node backend/index.js &
+          sleep 3
+          pytest qa_automation/tests/integration --html=integration-report.html --self-contained-html
+
+      - name: Upload Integration Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report
+          path: integration-report.html
+
+  # ==========================================
+  # STAGE 4: E2E UI Tests (Playwright)
+  # ==========================================
+  e2e-ui-tests:
+    name: E2E UI Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [build-and-integration]
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js & Python
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install App, Build Frontend & Install Playwright
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci && npm run build
+          cd ..
+          pip install -r qa_automation/requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Start Fullstack App & Run E2E Tests
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/edgistify
+          PORT: 8080
+          JWT_SECRET: super_secret_test_key_123
+          PYTHONPATH: qa_automation
+        run: |
+          node backend/index.js &
+          npm --prefix frontend run preview -- --port 5173 &
+          sleep 3
+          pytest qa_automation/tests/e2e --html=playwright-report.html --self-contained-html --tracing=retain-on-failure
+
+      - name: Upload Playwright Report & Traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-artifacts
+          path: |
+            playwright-report.html
+            test-results/

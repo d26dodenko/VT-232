@@ -1,0 +1,375 @@
+"""
+class Renderer
+
+Generates HTML from parsed token stream. Each instance has independent
+copy of rules. Those can be rewritten with ease. Also, you can add new
+rules if you create plugin and adds new token types.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+import inspect
+from typing import Any, ClassVar, Protocol
+
+from .common.utils import MD_TRIM_RE, escapeHtml, mdTrim, unescapeAll
+from .token import Token
+from .utils import EnvType, OptionsDict
+
+
+class RendererProtocol(Protocol):
+    """The interface a renderer passed to ``MarkdownIt(renderer_cls=...)`` must have.
+
+    ``MarkdownIt`` creates the renderer as ``renderer_cls(md)``, and its
+    ``render`` and ``renderInline`` methods call only :meth:`render`.
+    """
+
+    __output__: ClassVar[str]
+    """The name of the output format, e.g. ``"html"``.
+
+    ``MarkdownIt.add_render_rule`` only applies rules whose ``fmt`` matches it.
+    """
+
+    def render(
+        self, tokens: Sequence[Token], options: OptionsDict, env: EnvType
+    ) -> Any:
+        """Render a token stream to the output format."""
+
+
+class RendererHTML(RendererProtocol):
+    """Contains render rules for tokens. Can be updated and extended.
+
+    Example:
+
+    Each rule is called as independent static function with fixed signature:
+
+    ::
+
+        class Renderer:
+            def token_type_name(self, tokens, idx, options, env) {
+                # ...
+                return renderedHTML
+
+    ::
+
+        class CustomRenderer(RendererHTML):
+            def strong_open(self, tokens, idx, options, env):
+                return '<b>'
+            def strong_close(self, tokens, idx, options, env):
+                return '</b>'
+
+        md = MarkdownIt(renderer_cls=CustomRenderer)
+
+        result = md.render(...)
+
+    See https://github.com/markdown-it/markdown-it/blob/master/lib/renderer.js
+    for more details and examples.
+    """
+
+    __output__ = "html"
+
+    def __init__(self, parser: Any = None):
+        self.rules = {
+            k: v
+            for k, v in inspect.getmembers(self, predicate=inspect.ismethod)
+            if not k.startswith(("render", "_"))
+        }
+
+    def render(
+        self, tokens: Sequence[Token], options: OptionsDict, env: EnvType
+    ) -> str:
+        """Takes token stream and generates HTML.
+
+        :param tokens: list on block tokens to render
+        :param options: params of parser instance
+        :param env: additional data from parsed input
+
+        """
+        # Collect the fragments and join them once: repeated ``str +=`` is only
+        # linear on interpreters that can extend a string in place (the default
+        # CPython build), and quadratic in the output size elsewhere (e.g. PyPy,
+        # GraalPy and free-threaded CPython 3.13).
+        out: list[str] = []
+
+        for i, token in enumerate(tokens):
+            if token.type == "inline":
+                if token.children:
+                    out.append(self.renderInline(token.children, options, env))
+            elif token.type in self.rules:
+                out.append(self.rules[token.type](tokens, i, options, env))
+            else:
+                out.append(self.renderToken(tokens, i, options, env))
+
+        return "".join(out)
+
+    def renderInline(
+        self, tokens: Sequence[Token], options: OptionsDict, env: EnvType
+    ) -> str:
+        """The same as ``render``, but for single token of `inline` type.
+
+        :param tokens: list on block tokens to render
+        :param options: params of parser instance
+        :param env: additional data from parsed input (references, for example)
+        """
+        out: list[str] = []
+
+        for i, token in enumerate(tokens):
+            if token.type in self.rules:
+                out.append(self.rules[token.type](tokens, i, options, env))
+            else:
+                out.append(self.renderToken(tokens, i, options, env))
+
+        return "".join(out)
+
+    def renderToken(
+        self,
+        tokens: Sequence[Token],
+        idx: int,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        """Default token renderer.
+
+        Can be overridden by custom function
+
+        :param idx: token index to render
+        :param options: params of parser instance
+        """
+        result = ""
+        needLf = False
+        token = tokens[idx]
+
+        # Tight list paragraphs
+        if token.hidden:
+            return ""
+
+        # Insert a newline between hidden paragraph and subsequent opening
+        # block-level tag.
+        #
+        # For example, here we should insert a newline before blockquote:
+        #  - a
+        #    >
+        #
+        if token.block and token.nesting != -1 and idx and tokens[idx - 1].hidden:
+            result += "\n"
+
+        # Add token name, e.g. `<img`
+        result += ("</" if token.nesting == -1 else "<") + token.tag
+
+        # Encode attributes, e.g. `<img src="foo"`
+        result += self.renderAttrs(token)
+
+        # Add a slash for self-closing tags, e.g. `<img src="foo" /`
+        if token.nesting == 0 and options["xhtmlOut"]:
+            result += " /"
+
+        # Check if we need to add a newline after this tag
+        if token.block:
+            needLf = True
+
+            if token.nesting == 1 and (idx + 1 < len(tokens)):
+                nextToken = tokens[idx + 1]
+
+                if nextToken.type == "inline" or nextToken.hidden:
+                    # Block-level tag containing an inline tag.
+                    #
+                    needLf = False
+
+                elif nextToken.nesting == -1 and nextToken.tag == token.tag:
+                    # Opening tag + closing tag of the same type. E.g. `<li></li>`.
+                    #
+                    needLf = False
+
+        result += ">\n" if needLf else ">"
+
+        return result
+
+    @staticmethod
+    def renderAttrs(token: Token) -> str:
+        """Render token attributes to string."""
+        result = ""
+
+        for key, value in token.attrItems():
+            result += " " + escapeHtml(key) + '="' + escapeHtml(str(value)) + '"'
+
+        return result
+
+    def renderInlineAsText(
+        self,
+        tokens: Sequence[Token] | None,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        """Special kludge for image `alt` attributes to conform CommonMark spec.
+
+        Don't try to use it! Spec requires to show `alt` content with stripped markup,
+        instead of simple escaping.
+
+        :param tokens: list on block tokens to render
+        :param options: params of parser instance
+        :param env: additional data from parsed input
+        """
+        out: list[str] = []
+
+        for token in tokens or []:
+            if token.type in ("text", "code_inline"):
+                out.append(token.content)
+            elif token.type == "image":
+                if token.children:
+                    out.append(self.renderInlineAsText(token.children, options, env))
+            elif token.type in ("html_inline", "html_block"):
+                out.append(token.content)
+            elif token.type in ("softbreak", "hardbreak"):
+                out.append("\n")
+
+        return "".join(out)
+
+    ###################################################
+
+    def list_item_open(
+        self,
+        tokens: Sequence[Token],
+        idx: int,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        token = tokens[idx]
+        result = self.renderToken(tokens, idx, options, env)
+        if token.meta and "checked" in token.meta:
+            checked_attr = ' checked=""' if token.meta["checked"] else ""
+            disabled_attr = (
+                "" if options.get("tasklists_editable", False) else ' disabled=""'
+            )
+            result += (
+                '<input class="task-list-item-checkbox"'
+                f'{disabled_attr} type="checkbox"{checked_attr}> '
+            )
+        return result
+
+    def code_inline(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        token = tokens[idx]
+        return (
+            "<code"
+            + self.renderAttrs(token)
+            + ">"
+            + escapeHtml(tokens[idx].content)
+            + "</code>"
+        )
+
+    def code_block(
+        self,
+        tokens: Sequence[Token],
+        idx: int,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        token = tokens[idx]
+
+        return (
+            "<pre"
+            + self.renderAttrs(token)
+            + "><code>"
+            + escapeHtml(tokens[idx].content)
+            + "</code></pre>\n"
+        )
+
+    def fence(
+        self,
+        tokens: Sequence[Token],
+        idx: int,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        token = tokens[idx]
+        info = mdTrim(unescapeAll(token.info)) if token.info else ""
+        langName = ""
+        langAttrs = ""
+
+        if info:
+            # Not ``str.split()``: it splits on the Python whitespace set,
+            # which is wider than the one upstream uses here.
+            arr = MD_TRIM_RE.split(info, maxsplit=1)
+            langName = arr[0]
+            if len(arr) == 2:
+                langAttrs = arr[1]
+
+        if options.highlight:
+            highlighted = options.highlight(
+                token.content, langName, langAttrs
+            ) or escapeHtml(token.content)
+        else:
+            highlighted = escapeHtml(token.content)
+
+        if highlighted.startswith("<pre"):
+            return highlighted + "\n"
+
+        # If language exists, inject class gently, without modifying original token.
+        # May be, one day we will add .deepClone() for token and simplify this part, but
+        # now we prefer to keep things local.
+        if info:
+            # Fake token just to render attributes
+            tmpToken = Token(type="", tag="", nesting=0, attrs=token.attrs.copy())
+            tmpToken.attrJoin("class", options.langPrefix + langName)
+
+            return (
+                "<pre><code"
+                + self.renderAttrs(tmpToken)
+                + ">"
+                + highlighted
+                + "</code></pre>\n"
+            )
+
+        return (
+            "<pre><code"
+            + self.renderAttrs(token)
+            + ">"
+            + highlighted
+            + "</code></pre>\n"
+        )
+
+    def image(
+        self,
+        tokens: Sequence[Token],
+        idx: int,
+        options: OptionsDict,
+        env: EnvType,
+    ) -> str:
+        token = tokens[idx]
+
+        # "alt" attr MUST be set, even if empty. Because it's mandatory and
+        # should be placed on proper position for tests.
+        if token.children:
+            token.attrSet("alt", self.renderInlineAsText(token.children, options, env))
+        else:
+            token.attrSet("alt", "")
+
+        return self.renderToken(tokens, idx, options, env)
+
+    def hardbreak(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        return "<br />\n" if options.xhtmlOut else "<br>\n"
+
+    def softbreak(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        return (
+            ("<br />\n" if options.xhtmlOut else "<br>\n") if options.breaks else "\n"
+        )
+
+    def text(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        return escapeHtml(tokens[idx].content)
+
+    def html_block(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        return tokens[idx].content
+
+    def html_inline(
+        self, tokens: Sequence[Token], idx: int, options: OptionsDict, env: EnvType
+    ) -> str:
+        return tokens[idx].content

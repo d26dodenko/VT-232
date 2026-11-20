@@ -1,0 +1,11 @@
+.venv/
+node_modules/
+.coverage
+htmlcov/
+coverage.xml
+*.html
+__pycache__/
+.pytest_cache/
+test-results/
+.vscode/
+.env

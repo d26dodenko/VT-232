@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+
+from ..common.utils import isMdAsciiPunct, isPunctChar, isWhiteSpace
+from ..ruler import StateBase
+from ..token import Token
+from ..utils import EnvType
+
+if TYPE_CHECKING:
+    from markdown_it import MarkdownIt
+
+
+@dataclass(slots=True)
+class Delimiter:
+    # Char code of the starting marker (number).
+    marker: int
+
+    # Total length of these series of delimiters.
+    length: int
+
+    # A position of the token this delimiter corresponds to.
+    token: int
+
+    # If this delimiter is matched as a valid opener, `end` will be
+    # equal to its position, otherwise it's `-1`.
+    end: int
+
+    # Boolean flags that determine if this delimiter could open or close
+    # an emphasis.
+    open: bool
+    close: bool
+
+    level: bool | None = None
+
+
+class Scanned(NamedTuple):
+    can_open: bool
+    can_close: bool
+    length: int
+
+
+class StateInline(StateBase):
+    def __init__(
+        self, src: str, md: MarkdownIt, env: EnvType, outTokens: list[Token]
+    ) -> None:
+        self.src = src
+        self.env = env
+        self.md = md
+        self.tokens = outTokens
+        self.tokens_meta: list[dict[str, Any] | None] = [None] * len(outTokens)
+
+        self.pos = 0
+        self.posMax = len(self.src)
+        self.level = 0
+        # `pending` holds literal text not yet flushed to a token.  It is
+        # exposed as a plain `str` (see the property below), but is accumulated
+        # through a list buffer so that appending one character at a time -- the
+        # inline tokenizer's fallback path -- stays amortised O(1).  Appending
+        # to a `str` *attribute* cannot use CPython's in-place concatenation
+        # optimisation (the attribute holds a second reference), so each `+=`
+        # copies the whole string, making long runs of non-markup characters
+        # quadratic.
+        self._pending = ""
+        self._pending_buffer: list[str] = []
+        self.pendingLevel = 0
+
+        # Stores { start: end } pairs. Useful for backtrack
+        # optimization of pairs parse (emphasis, strikes).
+        self.cache: dict[int, int] = {}
+
+        # List of emphasis-like delimiters for current tag
+        self.delimiters: list[Delimiter] = []
+
+        # Stack of delimiter lists for upper level tags
+        self._prev_delimiters: list[list[Delimiter]] = []
+
+        # Backtick run length => last position, built lazily on first use
+        self.backticks: dict[int, int] = {}
+        self.backticksScanned = False
+
+        # Counter used to disable inline linkify-it execution
+        # inside <a> and markdown links
+        self.linkLevel = 0
+
+        # Lazy cache of `terminator -> last index in src`, see
+        # `html_terminator_last`.
+        self._html_terminators: dict[str, int] | None = None
+
+    def html_terminator_last(self, term: str) -> int:
+        """Index of the last occurrence of `term` in `self.src`, or -1.
+
+        The result is cached per terminator, for the life of the state.
+        It is used by the `html_inline` rule to reject, in constant time, a
+        position at which the terminator required to close an HTML construct
+        cannot possibly occur -- without running the tag regex, whose lazy
+        sub-patterns would otherwise rescan to the end of the input on every
+        such (failing) attempt.
+        """
+        if self._html_terminators is None:
+            self._html_terminators = {}
+        elif (last := self._html_terminators.get(term)) is not None:
+            return last
+        last = self._html_terminators[term] = self.src.rfind(term)
+        return last
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}"
+            f"(pos=[{self.pos} of {self.posMax}], token={len(self.tokens)})"
+        )
+
+    @property
+    def pending(self) -> str:
+        """Literal text accumulated so far, but not yet flushed to a token."""
+        buffer = self._pending_buffer
+        if buffer:
+            # Move the string into a local and drop the instance's reference
+            # before concatenating.  With a single reference left, CPython
+            # resizes the string in place (amortised O(new chars)) rather
+            # than copying it, so a rule that reads `pending` on every
+            # character (e.g. an attribute-syntax plugin) stays linear.
+            text = self._pending
+            self._pending = ""
+            text += "".join(buffer)
+            buffer.clear()
+            self._pending = text
+        return self._pending
+
+    @pending.setter
+    def pending(self, value: str) -> None:
+        self._pending = value
+        # Assign rather than `.clear()` so the setter also works on an
+        # instance whose `__init__` has not run yet (subclasses that set
+        # `pending` before calling `super().__init__()`), and so a copied
+        # state never shares a buffer with its original.
+        self._pending_buffer = []
+
+    def __copy__(self) -> StateInline:
+        """Shallow copy that does not share the pending text buffer."""
+        text = self.pending  # materialise (and clear) our own buffer first
+        new = self.__class__.__new__(self.__class__)
+        new.__dict__.update(self.__dict__)
+        new._pending = text
+        new._pending_buffer = []
+        return new
+
+    def append_pending(self, text: str) -> None:
+        """Append literal text to `pending`, in amortised O(1) time.
+
+        Prefer this to ``state.pending += text`` on hot paths: it buffers the
+        fragment rather than rebuilding the whole ``pending`` string per call.
+        """
+        self._pending_buffer.append(text)
+
+    def pushPending(self) -> Token:
+        token = Token("text", "", 0)
+        token.content = self.pending
+        token.level = self.pendingLevel
+        self.tokens.append(token)
+        self.pending = ""
+        return token
+
+    def push(self, ttype: str, tag: str, nesting: Literal[-1, 0, 1]) -> Token:
+        """Push new token to "stream".
+        If pending text exists - flush it as text token
+        """
+        if self.pending:
+            self.pushPending()
+
+        token = Token(ttype, tag, nesting)
+        token_meta = None
+
+        if nesting < 0:
+            # closing tag
+            self.level -= 1
+            self.delimiters = self._prev_delimiters.pop()
+
+        token.level = self.level
+
+        if nesting > 0:
+            # opening tag
+            self.level += 1
+            self._prev_delimiters.append(self.delimiters)
+            self.delimiters = []
+            token_meta = {"delimiters": self.delimiters}
+
+        self.pendingLevel = self.level
+        self.tokens.append(token)
+        self.tokens_meta.append(token_meta)
+        return token
+
+    def scanDelims(self, start: int, canSplitWord: bool) -> Scanned:
+        """
+        Scan a sequence of emphasis-like markers, and determine whether
+        it can start an emphasis sequence or end an emphasis sequence.
+
+         - start - position to scan from (it should point at a valid marker);
+         - canSplitWord - determine if these markers can be found inside a word
+
+        """
+        pos = start
+        maximum = self.posMax
+        marker = self.src[start]
+
+        # treat beginning of the line as a whitespace
+        lastChar = self.src[start - 1] if start > 0 else " "
+
+        while pos < maximum and self.src[pos] == marker:
+            pos += 1
+
+        count = pos - start
+
+        # treat end of the line as a whitespace
+        nextChar = self.src[pos] if pos < maximum else " "
+
+        isLastPunctChar = isMdAsciiPunct(ord(lastChar)) or isPunctChar(lastChar)
+        isNextPunctChar = isMdAsciiPunct(ord(nextChar)) or isPunctChar(nextChar)
+
+        isLastWhiteSpace = isWhiteSpace(ord(lastChar))
+        isNextWhiteSpace = isWhiteSpace(ord(nextChar))
+
+        left_flanking = not (
+            isNextWhiteSpace
+            or (isNextPunctChar and not (isLastWhiteSpace or isLastPunctChar))
+        )
+        right_flanking = not (
+            isLastWhiteSpace
+            or (isLastPunctChar and not (isNextWhiteSpace or isNextPunctChar))
+        )
+
+        can_open = left_flanking and (
+            canSplitWord or (not right_flanking) or isLastPunctChar
+        )
+        can_close = right_flanking and (
+            canSplitWord or (not left_flanking) or isNextPunctChar
+        )
+
+        return Scanned(can_open, can_close, count)

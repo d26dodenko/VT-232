@@ -1,0 +1,1789 @@
+import inspect
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import traceback
+from collections.abc import Callable, Sequence
+from functools import update_wrapper
+from traceback import FrameSummary, StackSummary
+from types import TracebackType
+from typing import Annotated, Any
+
+from annotated_doc import Doc
+
+from . import _click
+from ._click.globals import get_current_context
+from ._coercion import resolve_type_descriptor
+from ._param_types import lenient_issubclass, parse_param_annotation
+from ._typing import get_args, get_origin
+from .completion import get_completion_inspect_parameters
+from .core import (
+    DEFAULT_MARKUP_MODE,
+    HAS_RICH,
+    MarkupMode,
+    TyperArgument,
+    TyperCommand,
+    TyperGroup,
+    TyperOption,
+)
+from .models import (
+    ArgumentInfo,
+    CommandFunctionType,
+    CommandInfo,
+    Default,
+    DefaultPlaceholder,
+    DeveloperExceptionConfig,
+    OptionInfo,
+    ParameterInfo,
+    ParamMeta,
+    Required,
+    TyperInfo,
+)
+from .utils import get_params_from_function
+
+_original_except_hook = sys.excepthook
+_typer_developer_exception_attr_name = "__typer_developer_exception__"
+
+
+def except_hook(
+    exc_type: type[BaseException], exc_value: BaseException, tb: TracebackType | None
+) -> None:
+    exception_config: DeveloperExceptionConfig | None = getattr(
+        exc_value, _typer_developer_exception_attr_name, None
+    )
+    standard_traceback = os.getenv(
+        "TYPER_STANDARD_TRACEBACK", os.getenv("_TYPER_STANDARD_TRACEBACK")
+    )
+    if (
+        standard_traceback
+        or not exception_config
+        or not exception_config.pretty_exceptions_enable
+    ):
+        _original_except_hook(exc_type, exc_value, tb)
+        return
+    typer_path = os.path.dirname(__file__)
+    click_path = os.path.dirname(_click.__file__)
+    internal_dir_names = [typer_path, click_path]
+    exc = exc_value
+    if HAS_RICH:
+        from . import rich_utils
+
+        rich_tb = rich_utils.get_traceback(exc, exception_config, internal_dir_names)
+        console_stderr = rich_utils._get_rich_console(stderr=True)
+        console_stderr.print(rich_tb)
+        return
+    tb_exc = traceback.TracebackException.from_exception(exc)
+    stack: list[FrameSummary] = []
+    for frame in tb_exc.stack:
+        if any(frame.filename.startswith(path) for path in internal_dir_names):
+            if not exception_config.pretty_exceptions_short:
+                # Hide the line for internal libraries, Typer and Click
+                stack.append(
+                    traceback.FrameSummary(
+                        filename=frame.filename,
+                        lineno=frame.lineno,
+                        name=frame.name,
+                        line="",
+                    )
+                )
+        else:
+            stack.append(frame)
+    # Type ignore ref: https://github.com/python/typeshed/pull/8244
+    final_stack_summary = StackSummary.from_list(stack)
+    tb_exc.stack = final_stack_summary
+    for line in tb_exc.format():
+        print(line, file=sys.stderr)
+    return
+
+
+def get_install_completion_arguments() -> tuple[_click.Parameter, _click.Parameter]:
+    install_param, show_param = get_completion_inspect_parameters()
+    click_install_param = _get_param(install_param)
+    click_show_param = _get_param(show_param)
+    return click_install_param, click_show_param
+
+
+class Typer:
+    """
+    `Typer` main class, the main entrypoint to use Typer.
+
+    Read more in the
+    [Typer docs for First Steps](https://typer.tiangolo.com/tutorial/typer-app/).
+
+    ## Example
+
+    ```python
+    import typer
+
+    app = typer.Typer()
+    ```
+    """
+
+    def __init__(
+        self,
+        *,
+        name: Annotated[
+            str | None,
+            Doc(
+                """
+                The name of this application.
+                Mostly used to set the name for [subcommands](https://typer.tiangolo.com/tutorial/subcommands/), in which case it can be overridden by `add_typer(name=...)`.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(name="users")
+                ```
+                """
+            ),
+        ] = Default(None),
+        cls: Annotated[
+            type[TyperGroup] | None,
+            Doc(
+                """
+                The class of this app. Mainly used when [using the Click library underneath](https://typer.tiangolo.com/tutorial/using-click/). Can usually be left at the default value `None`.
+                Otherwise, should be a subtype of `TyperGroup`.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(cls=TyperGroup)
+                ```
+                """
+            ),
+        ] = Default(None),
+        invoke_without_command: Annotated[
+            bool,
+            Doc(
+                """
+                By setting this to `True`, you can make sure a callback is executed even when no subcommand is provided.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(invoke_without_command=True)
+                ```
+                """
+            ),
+        ] = Default(False),
+        no_args_is_help: Annotated[
+            bool,
+            Doc(
+                """
+                If this is set to `True`, running a command without any arguments will automatically show the help page.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(no_args_is_help=True)
+                ```
+                """
+            ),
+        ] = Default(False),
+        subcommand_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                How to represent the subcommand argument in help.
+                """
+            ),
+        ] = Default(None),
+        chain: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                Allow passing more than one subcommand argument.
+                """
+            ),
+        ] = Default(False),
+        result_callback: Annotated[
+            Callable[..., Any] | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                A function to call after the group's and subcommand's callbacks.
+                """
+            ),
+        ] = Default(None),
+        # Command
+        context_settings: Annotated[
+            dict[Any, Any] | None,
+            Doc(
+                """
+                Pass configurations for the [context](https://typer.tiangolo.com/tutorial/commands/context/).
+                Available configurations can be found in the docs for Click's `Context` [here](https://click.palletsprojects.com/en/stable/api/#context).
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]})
+                ```
+                """
+            ),
+        ] = Default(None),
+        callback: Annotated[
+            Callable[..., Any] | None,
+            Doc(
+                """
+                Add a callback to the main Typer app. Can be overridden with `@app.callback()`.
+                See [the tutorial about callbacks](https://typer.tiangolo.com/tutorial/commands/callback/) for more details.
+
+                **Example**
+
+                ```python
+                import typer
+
+                def callback():
+                    print("Running a command")
+
+                app = typer.Typer(callback=callback)
+                ```
+                """
+            ),
+        ] = Default(None),
+        help: Annotated[
+            str | None,
+            Doc(
+                """
+                Help text for the main Typer app.
+                See [the tutorial about name and help](https://typer.tiangolo.com/tutorial/subcommands/name-and-help) for different ways of setting a command's help,
+                and which one takes priority.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(help="Some help.")
+                ```
+                """
+            ),
+        ] = Default(None),
+        epilog: Annotated[
+            str | None,
+            Doc(
+                """
+                Text that will be printed right after the help text.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(epilog="May the force be with you")
+                ```
+                """
+            ),
+        ] = Default(None),
+        short_help: Annotated[
+            str | None,
+            Doc(
+                """
+                A shortened version of the help text that can be used e.g. in the help table listing subcommands.
+                When not defined, the normal `help` text will be used instead.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(help="A lot of explanation about user management", short_help="user management")
+                ```
+                """
+            ),
+        ] = Default(None),
+        options_metavar: Annotated[
+            str,
+            Doc(
+                """
+                In the example usage string of the help text for a command, the default placeholder for various arguments is `[OPTIONS]`.
+                Set `options_metavar` to change this into a different string.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(options_metavar="[OPTS]")
+                ```
+                """
+            ),
+        ] = Default("[OPTIONS]"),
+        add_help_option: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                By default each command registers a `--help` option. This can be disabled by this parameter.
+                """
+            ),
+        ] = Default(True),
+        hidden: Annotated[
+            bool,
+            Doc(
+                """
+                Hide this command from help outputs. `False` by default.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(hidden=True)
+                ```
+                """
+            ),
+        ] = Default(False),
+        deprecated: Annotated[
+            bool,
+            Doc(
+                """
+                Mark this command as being deprecated in the help text. `False` by default.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(deprecated=True)
+                ```
+                """
+            ),
+        ] = Default(False),
+        add_completion: Annotated[
+            bool,
+            Doc(
+                """
+                Toggle whether or not to add the `--install-completion` and `--show-completion` options to the app.
+                Set to `True` by default.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(add_completion=False)
+                ```
+                """
+            ),
+        ] = True,
+        # Rich settings
+        rich_markup_mode: Annotated[
+            MarkupMode,
+            Doc(
+                """
+                Enable markup text if you have Rich installed. This can be set to `"markdown"`, `"rich"`, or `None`.
+                By default, `rich_markup_mode` is `None` if Rich is not installed, and `"rich"` if it is installed.
+                See [the tutorial on help formatting](https://typer.tiangolo.com/tutorial/commands/help/#rich-markdown-and-markup) for more information.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(rich_markup_mode="rich")
+                ```
+                """
+            ),
+        ] = DEFAULT_MARKUP_MODE,
+        rich_help_panel: Annotated[
+            str | None,
+            Doc(
+                """
+                Set the panel name of the command when the help is printed with Rich.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(rich_help_panel="Utils and Configs")
+                ```
+                """
+            ),
+        ] = Default(None),
+        suggest_commands: Annotated[
+            bool,
+            Doc(
+                """
+                As of version 0.20.0, Typer provides [support for mistyped command names](https://typer.tiangolo.com/tutorial/commands/help/#suggest-commands) by printing helpful suggestions.
+                You can turn this setting off with `suggest_commands`:
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(suggest_commands=False)
+                ```
+                """
+            ),
+        ] = True,
+        pretty_exceptions_enable: Annotated[
+            bool,
+            Doc(
+                """
+                If you want to disable [pretty exceptions with Rich](https://typer.tiangolo.com/tutorial/exceptions/#exceptions-with-rich),
+                you can set `pretty_exceptions_enable` to `False`. When doing so, you will see the usual standard exception trace.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(pretty_exceptions_enable=False)
+                ```
+                """
+            ),
+        ] = True,
+        pretty_exceptions_show_locals: Annotated[
+            bool,
+            Doc(
+                """
+                If Rich is installed, [error messages](https://typer.tiangolo.com/tutorial/exceptions/#exceptions-and-errors)
+                will be nicely printed.
+
+                If you set `pretty_exceptions_show_locals=True` it will also include the values of local variables for easy debugging.
+
+                However, if such a variable contains delicate information, you should consider leaving `pretty_exceptions_show_locals=False`
+                (the default) to `False` to enhance security.
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(pretty_exceptions_show_locals=True)
+                ```
+                """
+            ),
+        ] = False,
+        pretty_exceptions_short: Annotated[
+            bool,
+            Doc(
+                """
+                By default, [pretty exceptions formatted with Rich](https://typer.tiangolo.com/tutorial/exceptions/#exceptions-with-rich) hide the long stack trace.
+                If you want to show the full trace instead, you can set the parameter `pretty_exceptions_short` to `False`:
+
+                **Example**
+
+                ```python
+                import typer
+
+                app = typer.Typer(pretty_exceptions_short=False)
+                ```
+                """
+            ),
+        ] = True,
+    ):
+        self._add_completion = add_completion
+        self.rich_markup_mode: MarkupMode = rich_markup_mode
+        self.rich_help_panel = rich_help_panel
+        self.suggest_commands = suggest_commands
+        self.pretty_exceptions_enable = pretty_exceptions_enable
+        self.pretty_exceptions_show_locals = pretty_exceptions_show_locals
+        self.pretty_exceptions_short = pretty_exceptions_short
+        self.info = TyperInfo(
+            name=name,
+            cls=cls,
+            invoke_without_command=invoke_without_command,
+            no_args_is_help=no_args_is_help,
+            subcommand_metavar=subcommand_metavar,
+            chain=chain,
+            result_callback=result_callback,
+            context_settings=context_settings,
+            callback=callback,
+            help=help,
+            epilog=epilog,
+            short_help=short_help,
+            options_metavar=options_metavar,
+            add_help_option=add_help_option,
+            hidden=hidden,
+            deprecated=deprecated,
+        )
+        self.registered_groups: list[TyperInfo] = []
+        self.registered_commands: list[CommandInfo] = []
+        self.registered_callback: TyperInfo | None = None
+
+    def callback(
+        self,
+        *,
+        cls: Annotated[
+            type[TyperGroup] | None,
+            Doc(
+                """
+                The class of this app. Mainly used when [using the Click library underneath](https://typer.tiangolo.com/tutorial/using-click/). Can usually be left at the default value `None`.
+                Otherwise, should be a subtype of `TyperGroup`.
+                """
+            ),
+        ] = Default(None),
+        invoke_without_command: Annotated[
+            bool,
+            Doc(
+                """
+                By setting this to `True`, you can make sure a callback is executed even when no subcommand is provided.
+                """
+            ),
+        ] = Default(False),
+        no_args_is_help: Annotated[
+            bool,
+            Doc(
+                """
+                If this is set to `True`, running a command without any arguments will automatically show the help page.
+                """
+            ),
+        ] = Default(False),
+        subcommand_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                How to represent the subcommand argument in help.
+                """
+            ),
+        ] = Default(None),
+        chain: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                Allow passing more than one subcommand argument.
+                """
+            ),
+        ] = Default(False),
+        result_callback: Annotated[
+            Callable[..., Any] | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                A function to call after the group's and subcommand's callbacks.
+                """
+            ),
+        ] = Default(None),
+        # Command
+        context_settings: Annotated[
+            dict[Any, Any] | None,
+            Doc(
+                """
+                Pass configurations for the [context](https://typer.tiangolo.com/tutorial/commands/context/).
+                Available configurations can be found in the docs for Click's `Context` [here](https://click.palletsprojects.com/en/stable/api/#context).
+                """
+            ),
+        ] = Default(None),
+        help: Annotated[
+            str | None,
+            Doc(
+                """
+                Help text for the command.
+                See [the tutorial about name and help](https://typer.tiangolo.com/tutorial/subcommands/name-and-help) for different ways of setting a command's help,
+                and which one takes priority.
+                """
+            ),
+        ] = Default(None),
+        epilog: Annotated[
+            str | None,
+            Doc(
+                """
+                Text that will be printed right after the help text.
+                """
+            ),
+        ] = Default(None),
+        short_help: Annotated[
+            str | None,
+            Doc(
+                """
+                A shortened version of the help text that can be used e.g. in the help table listing subcommands.
+                When not defined, the normal `help` text will be used instead.
+                """
+            ),
+        ] = Default(None),
+        options_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                In the example usage string of the help text for a command, the default placeholder for various arguments is `[OPTIONS]`.
+                Set `options_metavar` to change this into a different string. When `None`, the default value will be used.
+                """
+            ),
+        ] = Default(None),
+        add_help_option: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                By default each command registers a `--help` option. This can be disabled by this parameter.
+                """
+            ),
+        ] = Default(True),
+        hidden: Annotated[
+            bool,
+            Doc(
+                """
+                Hide this command from help outputs. `False` by default.
+                """
+            ),
+        ] = Default(False),
+        deprecated: Annotated[
+            bool,
+            Doc(
+                """
+                Mark this command as deprecated in the help text. `False` by default.
+                """
+            ),
+        ] = Default(False),
+        # Rich settings
+        rich_help_panel: Annotated[
+            str | None,
+            Doc(
+                """
+                Set the panel name of the command when the help is printed with Rich.
+                """
+            ),
+        ] = Default(None),
+    ) -> Callable[[CommandFunctionType], CommandFunctionType]:
+        """
+        Using the decorator `@app.callback`, you can declare the CLI parameters for the main CLI application.
+
+        Read more in the
+        [Typer docs for Callbacks](https://typer.tiangolo.com/tutorial/commands/callback/).
+
+        ## Example
+
+        ```python
+        import typer
+
+        app = typer.Typer()
+        state = {"verbose": False}
+
+        @app.callback()
+        def main(verbose: bool = False):
+            if verbose:
+                print("Will write verbose output")
+                state["verbose"] = True
+
+        @app.command()
+        def delete(username: str):
+            # define subcommand
+            ...
+        ```
+        """
+
+        def decorator(f: CommandFunctionType) -> CommandFunctionType:
+            self.registered_callback = TyperInfo(
+                cls=cls,
+                invoke_without_command=invoke_without_command,
+                no_args_is_help=no_args_is_help,
+                subcommand_metavar=subcommand_metavar,
+                chain=chain,
+                result_callback=result_callback,
+                context_settings=context_settings,
+                callback=f,
+                help=help,
+                epilog=epilog,
+                short_help=short_help,
+                options_metavar=(
+                    options_metavar or self._info_val_str("options_metavar")
+                ),
+                add_help_option=add_help_option,
+                hidden=hidden,
+                deprecated=deprecated,
+                rich_help_panel=rich_help_panel,
+            )
+            return f
+
+        return decorator
+
+    def command(
+        self,
+        name: Annotated[
+            str | None,
+            Doc(
+                """
+                The name of this command.
+                """
+            ),
+        ] = None,
+        *,
+        cls: Annotated[
+            type[TyperCommand] | None,
+            Doc(
+                """
+                The class of this command. Mainly used when [using the Click library underneath](https://typer.tiangolo.com/tutorial/using-click/). Can usually be left at the default value `None`.
+                Otherwise, should be a subtype of `TyperCommand`.
+                """
+            ),
+        ] = None,
+        context_settings: Annotated[
+            dict[Any, Any] | None,
+            Doc(
+                """
+                Pass configurations for the [context](https://typer.tiangolo.com/tutorial/commands/context/).
+                Available configurations can be found in the docs for Click's `Context` [here](https://click.palletsprojects.com/en/stable/api/#context).
+                """
+            ),
+        ] = None,
+        help: Annotated[
+            str | None,
+            Doc(
+                """
+                Help text for the command.
+                See [the tutorial about name and help](https://typer.tiangolo.com/tutorial/subcommands/name-and-help) for different ways of setting a command's help,
+                and which one takes priority.
+                """
+            ),
+        ] = None,
+        epilog: Annotated[
+            str | None,
+            Doc(
+                """
+                Text that will be printed right after the help text.
+                """
+            ),
+        ] = None,
+        short_help: Annotated[
+            str | None,
+            Doc(
+                """
+                A shortened version of the help text that can be used e.g. in the help table listing subcommands.
+                When not defined, the normal `help` text will be used instead.
+                """
+            ),
+        ] = None,
+        options_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                In the example usage string of the help text for a command, the default placeholder for various arguments is `[OPTIONS]`.
+                Set `options_metavar` to change this into a different string. When `None`, the default value will be used.
+                """
+            ),
+        ] = Default(None),
+        add_help_option: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                By default each command registers a `--help` option. This can be disabled by this parameter.
+                """
+            ),
+        ] = True,
+        no_args_is_help: Annotated[
+            bool,
+            Doc(
+                """
+                If this is set to `True`, running a command without any arguments will automatically show the help page.
+                """
+            ),
+        ] = False,
+        hidden: Annotated[
+            bool,
+            Doc(
+                """
+                Hide this command from help outputs. `False` by default.
+                """
+            ),
+        ] = False,
+        deprecated: Annotated[
+            bool,
+            Doc(
+                """
+                Mark this command as deprecated in the help outputs. `False` by default.
+                """
+            ),
+        ] = False,
+        # Rich settings
+        rich_help_panel: Annotated[
+            str | None,
+            Doc(
+                """
+                Set the panel name of the command when the help is printed with Rich.
+                """
+            ),
+        ] = Default(None),
+    ) -> Callable[[CommandFunctionType], CommandFunctionType]:
+        """
+        Using the decorator `@app.command`, you can define a subcommand of the previously defined Typer app.
+
+        Read more in the
+        [Typer docs for Commands](https://typer.tiangolo.com/tutorial/commands/).
+
+        ## Example
+
+        ```python
+        import typer
+
+        app = typer.Typer()
+
+        @app.command()
+        def create():
+            print("Creating user: Hiro Hamada")
+
+        @app.command()
+        def delete():
+            print("Deleting user: Hiro Hamada")
+        ```
+        """
+        if cls is None:
+            cls = TyperCommand
+
+        def decorator(f: CommandFunctionType) -> CommandFunctionType:
+            self.registered_commands.append(
+                CommandInfo(
+                    name=name,
+                    cls=cls,
+                    context_settings=context_settings,
+                    callback=f,
+                    help=help,
+                    epilog=epilog,
+                    short_help=short_help,
+                    options_metavar=(
+                        options_metavar or self._info_val_str("options_metavar")
+                    ),
+                    add_help_option=add_help_option,
+                    no_args_is_help=no_args_is_help,
+                    hidden=hidden,
+                    deprecated=deprecated,
+                    # Rich settings
+                    rich_help_panel=rich_help_panel,
+                )
+            )
+            return f
+
+        return decorator
+
+    def add_typer(
+        self,
+        typer_instance: "Typer",
+        *,
+        name: Annotated[
+            str | None,
+            Doc(
+                """
+                The name of this subcommand.
+                See [the tutorial about name and help](https://typer.tiangolo.com/tutorial/subcommands/name-and-help) for different ways of setting a command's name,
+                and which one takes priority.
+                """
+            ),
+        ] = Default(None),
+        cls: Annotated[
+            type[TyperGroup] | None,
+            Doc(
+                """
+                The class of this subcommand. Mainly used when [using the Click library underneath](https://typer.tiangolo.com/tutorial/using-click/). Can usually be left at the default value `None`.
+                Otherwise, should be a subtype of `TyperGroup`.
+                """
+            ),
+        ] = Default(None),
+        invoke_without_command: Annotated[
+            bool,
+            Doc(
+                """
+                By setting this to `True`, you can make sure a callback is executed even when no subcommand is provided.
+                """
+            ),
+        ] = Default(False),
+        no_args_is_help: Annotated[
+            bool,
+            Doc(
+                """
+                If this is set to `True`, running a command without any arguments will automatically show the help page.
+                """
+            ),
+        ] = Default(False),
+        subcommand_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                How to represent the subcommand argument in help.
+                """
+            ),
+        ] = Default(None),
+        chain: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                Allow passing more than one subcommand argument.
+                """
+            ),
+        ] = Default(False),
+        result_callback: Annotated[
+            Callable[..., Any] | None,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                A function to call after the group's and subcommand's callbacks.
+                """
+            ),
+        ] = Default(None),
+        # Command
+        context_settings: Annotated[
+            dict[Any, Any] | None,
+            Doc(
+                """
+                Pass configurations for the [context](https://typer.tiangolo.com/tutorial/commands/context/).
+                Available configurations can be found in the docs for Click's `Context` [here](https://click.palletsprojects.com/en/stable/api/#context).
+                """
+            ),
+        ] = Default(None),
+        callback: Annotated[
+            Callable[..., Any] | None,
+            Doc(
+                """
+                Add a callback to this app.
+                See [the tutorial about callbacks](https://typer.tiangolo.com/tutorial/commands/callback/) for more details.
+                """
+            ),
+        ] = Default(None),
+        help: Annotated[
+            str | None,
+            Doc(
+                """
+                Help text for the subcommand.
+                See [the tutorial about name and help](https://typer.tiangolo.com/tutorial/subcommands/name-and-help) for different ways of setting a command's help,
+                and which one takes priority.
+                """
+            ),
+        ] = Default(None),
+        epilog: Annotated[
+            str | None,
+            Doc(
+                """
+                Text that will be printed right after the help text.
+                """
+            ),
+        ] = Default(None),
+        short_help: Annotated[
+            str | None,
+            Doc(
+                """
+                A shortened version of the help text that can be used e.g. in the help table listing subcommands.
+                When not defined, the normal `help` text will be used instead.
+                """
+            ),
+        ] = Default(None),
+        options_metavar: Annotated[
+            str | None,
+            Doc(
+                """
+                In the example usage string of the help text for a command, the default placeholder for various arguments is `[OPTIONS]`.
+                Set `options_metavar` to change this into a different string. When `None`, the default value will be used.
+                """
+            ),
+        ] = Default(None),
+        add_help_option: Annotated[
+            bool,
+            Doc(
+                """
+                **Note**: you probably shouldn't use this parameter, it is inherited
+                from Click and supported for compatibility.
+
+                ---
+
+                By default each command registers a `--help` option. This can be disabled by this parameter.
+                """
+            ),
+        ] = Default(True),
+        hidden: Annotated[
+            bool,
+            Doc(
+                """
+                Hide this command from help outputs. `False` by default.
+                """
+            ),
+        ] = Default(False),
+        deprecated: Annotated[
+            bool,
+            Doc(
+                """
+                Mark this command as deprecated in the help outputs. `False` by default.
+                """
+            ),
+        ] = False,
+        # Rich settings
+        rich_help_panel: Annotated[
+            str | None,
+            Doc(
+                """
+                Set the panel name of the command when the help is printed with Rich.
+                """
+            ),
+        ] = Default(None),
+    ) -> None:
+        """
+        Add subcommands to the main app using `app.add_typer()`.
+        Subcommands may be defined in separate modules, ensuring clean separation of code by functionality.
+
+        Read more in the
+        [Typer docs for SubCommands](https://typer.tiangolo.com/tutorial/subcommands/add-typer/).
+
+        ## Example
+
+        ```python
+        import typer
+
+        from .add import app as add_app
+        from .delete import app as delete_app
+
+        app = typer.Typer()
+
+        app.add_typer(add_app)
+        app.add_typer(delete_app)
+        ```
+        """
+        self.registered_groups.append(
+            TyperInfo(
+                typer_instance,
+                name=name,
+                cls=cls,
+                invoke_without_command=invoke_without_command,
+                no_args_is_help=no_args_is_help,
+                subcommand_metavar=subcommand_metavar,
+                chain=chain,
+                result_callback=result_callback,
+                context_settings=context_settings,
+                callback=callback,
+                help=help,
+                epilog=epilog,
+                short_help=short_help,
+                options_metavar=(
+                    options_metavar or self._info_val_str("options_metavar")
+                ),
+                add_help_option=add_help_option,
+                hidden=hidden,
+                deprecated=deprecated,
+                rich_help_panel=rich_help_panel,
+            )
+        )
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if sys.excepthook != except_hook:
+            sys.excepthook = except_hook
+        try:
+            return get_command(self)(*args, **kwargs)
+        except Exception as e:
+            # Set a custom attribute to tell the hook to show nice exceptions for user
+            # code. An alternative/first implementation was a custom exception with
+            # raise custom_exc from e
+            # but that means the last error shown is the custom exception, not the
+            # actual error. This trick improves developer experience by showing the
+            # actual error last.
+            setattr(
+                e,
+                _typer_developer_exception_attr_name,
+                DeveloperExceptionConfig(
+                    pretty_exceptions_enable=self.pretty_exceptions_enable,
+                    pretty_exceptions_show_locals=self.pretty_exceptions_show_locals,
+                    pretty_exceptions_short=self.pretty_exceptions_short,
+                ),
+            )
+            raise e
+
+    def _info_val_str(self, name: str) -> str:
+        val = getattr(self.info, name)
+        val_str = val.value if isinstance(val, DefaultPlaceholder) else val
+        assert isinstance(val_str, str)
+        return val_str
+
+
+def get_group(typer_instance: Typer) -> TyperGroup:
+    group = get_group_from_info(
+        TyperInfo(typer_instance),
+        pretty_exceptions_short=typer_instance.pretty_exceptions_short,
+        rich_markup_mode=typer_instance.rich_markup_mode,
+        suggest_commands=typer_instance.suggest_commands,
+    )
+    return group
+
+
+def get_command(typer_instance: Typer) -> _click.Command:
+    if typer_instance._add_completion:
+        click_install_param, click_show_param = get_install_completion_arguments()
+    if (
+        typer_instance.registered_callback
+        or typer_instance.info.callback
+        or typer_instance.registered_groups
+        or len(typer_instance.registered_commands) > 1
+    ):
+        # Create a Group
+        click_command: _click.Command = get_group(typer_instance)
+        if typer_instance._add_completion:
+            click_command.params.append(click_install_param)
+            click_command.params.append(click_show_param)
+        return click_command
+    elif len(typer_instance.registered_commands) == 1:
+        # Create a single Command
+        single_command = typer_instance.registered_commands[0]
+
+        if not single_command.context_settings and not isinstance(
+            typer_instance.info.context_settings, DefaultPlaceholder
+        ):
+            single_command.context_settings = typer_instance.info.context_settings
+
+        click_command = get_command_from_info(
+            single_command,
+            pretty_exceptions_short=typer_instance.pretty_exceptions_short,
+            rich_markup_mode=typer_instance.rich_markup_mode,
+        )
+        if typer_instance._add_completion:
+            click_command.params.append(click_install_param)
+            click_command.params.append(click_show_param)
+        return click_command
+    raise RuntimeError(
+        "Could not get a command for this Typer instance"
+    )  # pragma: no cover
+
+
+def solve_typer_info_help(typer_info: TyperInfo) -> str:
+    # Priority 1: Explicit value was set in app.add_typer()
+    if not isinstance(typer_info.help, DefaultPlaceholder):
+        return inspect.cleandoc(typer_info.help or "")
+    # Priority 2: Explicit value was set in sub_app.callback()
+    if typer_info.typer_instance and typer_info.typer_instance.registered_callback:
+        callback_help = typer_info.typer_instance.registered_callback.help
+        if not isinstance(callback_help, DefaultPlaceholder):
+            return inspect.cleandoc(callback_help or "")
+    # Priority 3: Explicit value was set in sub_app = typer.Typer()
+    if typer_info.typer_instance and typer_info.typer_instance.info:
+        instance_help = typer_info.typer_instance.info.help
+        if not isinstance(instance_help, DefaultPlaceholder):
+            return inspect.cleandoc(instance_help or "")
+    # Priority 4: Implicit inference from callback docstring in app.add_typer()
+    if typer_info.callback:
+        doc = inspect.getdoc(typer_info.callback)
+        if doc:
+            return doc
+    # Priority 5: Implicit inference from callback docstring in @app.callback()
+    if typer_info.typer_instance and typer_info.typer_instance.registered_callback:
+        callback = typer_info.typer_instance.registered_callback.callback
+        if not isinstance(callback, DefaultPlaceholder):
+            doc = inspect.getdoc(callback or "")
+            if doc:
+                return doc
+    # Priority 6: Implicit inference from callback docstring in typer.Typer()
+    if typer_info.typer_instance and typer_info.typer_instance.info:
+        instance_callback = typer_info.typer_instance.info.callback
+        if not isinstance(instance_callback, DefaultPlaceholder):
+            doc = inspect.getdoc(instance_callback)
+            if doc:
+                return doc
+    # Value not set, use the default
+    return typer_info.help.value
+
+
+def solve_typer_info_defaults(typer_info: TyperInfo) -> TyperInfo:
+    values: dict[str, Any] = {}
+    for name, value in typer_info.__dict__.items():
+        # Priority 1: Value was set in app.add_typer()
+        if not isinstance(value, DefaultPlaceholder):
+            values[name] = value
+            continue
+        # Priority 2: Value was set in @subapp.callback()
+        try:
+            callback_value = getattr(
+                typer_info.typer_instance.registered_callback,  # type: ignore
+                name,
+            )
+            if not isinstance(callback_value, DefaultPlaceholder):
+                values[name] = callback_value
+                continue
+        except AttributeError:
+            pass
+        # Priority 3: Value set in subapp = typer.Typer()
+        try:
+            instance_value = getattr(
+                typer_info.typer_instance.info,  # type: ignore
+                name,
+            )
+            if not isinstance(instance_value, DefaultPlaceholder):
+                values[name] = instance_value
+                continue
+        except AttributeError:
+            pass
+        # Value not set, use the default
+        values[name] = value.value
+    values["help"] = solve_typer_info_help(typer_info)
+    return TyperInfo(**values)
+
+
+def get_group_from_info(
+    group_info: TyperInfo,
+    *,
+    pretty_exceptions_short: bool,
+    suggest_commands: bool,
+    rich_markup_mode: MarkupMode,
+) -> TyperGroup:
+    assert group_info.typer_instance, (
+        "A Typer instance is needed to generate a Click Group"
+    )
+    commands: dict[str, _click.Command] = {}
+    for command_info in group_info.typer_instance.registered_commands:
+        command = get_command_from_info(
+            command_info=command_info,
+            pretty_exceptions_short=pretty_exceptions_short,
+            rich_markup_mode=rich_markup_mode,
+        )
+        if command.name:
+            commands[command.name] = command
+    for sub_group_info in group_info.typer_instance.registered_groups:
+        sub_group = get_group_from_info(
+            sub_group_info,
+            pretty_exceptions_short=pretty_exceptions_short,
+            rich_markup_mode=rich_markup_mode,
+            suggest_commands=suggest_commands,
+        )
+        if sub_group.name:
+            commands[sub_group.name] = sub_group
+        else:
+            if sub_group.callback:
+                import warnings
+
+                warnings.warn(
+                    "The 'callback' parameter is not supported by Typer when using `add_typer` without a name",
+                    stacklevel=5,
+                )
+            for sub_command_name, sub_command in sub_group.commands.items():
+                commands[sub_command_name] = sub_command
+    solved_info = solve_typer_info_defaults(group_info)
+    params, context_param_name = _get_params_name_from_function(solved_info.callback)
+    cls = solved_info.cls or TyperGroup
+    assert issubclass(cls, TyperGroup), f"{cls} should be a subclass of {TyperGroup}"
+    group = cls(
+        name=solved_info.name or "",
+        commands=commands,
+        invoke_without_command=solved_info.invoke_without_command,
+        no_args_is_help=solved_info.no_args_is_help,
+        subcommand_metavar=solved_info.subcommand_metavar,
+        result_callback=solved_info.result_callback,
+        context_settings=solved_info.context_settings,
+        callback=get_callback(
+            callback=solved_info.callback,
+            params=params,
+            context_param_name=context_param_name,
+            pretty_exceptions_short=pretty_exceptions_short,
+        ),
+        params=params,
+        help=solved_info.help,
+        epilog=solved_info.epilog,
+        short_help=solved_info.short_help,
+        options_metavar=solved_info.options_metavar,
+        add_help_option=solved_info.add_help_option,
+        hidden=solved_info.hidden,
+        deprecated=solved_info.deprecated,
+        rich_markup_mode=rich_markup_mode,
+        # Rich settings
+        rich_help_panel=solved_info.rich_help_panel,
+        suggest_commands=suggest_commands,
+    )
+    return group
+
+
+def get_command_name(name: str) -> str:
+    return name.lower().replace("_", "-")
+
+
+def get_default_option_flag_name(name: str) -> str:
+    return name.replace("_", "-")
+
+
+def _get_params_name_from_function(
+    callback: Callable[..., Any] | None,
+) -> tuple[list[TyperArgument | TyperOption], str | None]:
+    params = []
+    context_param_name = None
+    if callback:
+        parameters = get_params_from_function(callback)
+        for param_name, param in parameters.items():
+            if lenient_issubclass(param.annotation, _click.Context):
+                context_param_name = param_name
+                continue
+            params.append(_get_param(param))
+    return params, context_param_name
+
+
+def get_command_from_info(
+    command_info: CommandInfo,
+    *,
+    pretty_exceptions_short: bool,
+    rich_markup_mode: MarkupMode,
+) -> _click.Command:
+    assert command_info.callback, "A command must have a callback function"
+    name = command_info.name or get_command_name(command_info.callback.__name__)  # ty: ignore
+    use_help = command_info.help
+    if use_help is None:
+        use_help = inspect.getdoc(command_info.callback)
+    else:
+        use_help = inspect.cleandoc(use_help)
+    params, context_param_name = _get_params_name_from_function(command_info.callback)
+    cls = command_info.cls or TyperCommand
+    command = cls(
+        name=name,
+        context_settings=command_info.context_settings,
+        callback=get_callback(
+            callback=command_info.callback,
+            params=params,
+            context_param_name=context_param_name,
+            pretty_exceptions_short=pretty_exceptions_short,
+        ),
+        params=params,  # type: ignore
+        help=use_help,
+        epilog=command_info.epilog,
+        short_help=command_info.short_help,
+        options_metavar=command_info.options_metavar,
+        add_help_option=command_info.add_help_option,
+        no_args_is_help=command_info.no_args_is_help,
+        hidden=command_info.hidden,
+        deprecated=command_info.deprecated,
+        rich_markup_mode=rich_markup_mode,
+        # Rich settings
+        rich_help_panel=command_info.rich_help_panel,
+    )
+    return command
+
+
+def _normalize_collection_value(param: _click.Parameter, value: Any) -> Any:
+    if value is None:
+        return None
+    is_multi = getattr(param, "multiple", False) or getattr(param, "nargs", 1) == -1
+    if not is_multi:
+        return value
+    if param.default is None and len(value) == 0:
+        return None
+    return list(value)
+
+
+def get_callback(
+    *,
+    callback: Callable[..., Any] | None = None,
+    params: Sequence[_click.Parameter] = [],
+    context_param_name: str | None = None,
+    pretty_exceptions_short: bool,
+) -> Callable[..., Any] | None:
+    if not callback:
+        return None
+    parameters = get_params_from_function(callback)
+    use_params: dict[str, Any] = {}
+    for param_name in parameters:
+        use_params[param_name] = None
+    params_by_name: dict[str, _click.Parameter] = {}
+    for param in params:
+        if param.name:
+            use_params[param.name] = param.default
+            params_by_name[param.name] = param
+
+    def wrapper(**kwargs: Any) -> Any:
+        _rich_traceback_guard = pretty_exceptions_short  # noqa: F841
+        for k, v in kwargs.items():
+            matched_param = params_by_name.get(k)
+            assert matched_param is not None
+            use_params[k] = _normalize_collection_value(matched_param, v)
+        if context_param_name:
+            use_params[context_param_name] = get_current_context()
+        return callback(**use_params)
+
+    update_wrapper(wrapper, callback)
+    return wrapper
+
+
+def _get_param(param: ParamMeta) -> TyperArgument | TyperOption:
+    default_value = None
+    required = False
+    if isinstance(param.default, ParameterInfo):
+        parameter_info = param.default
+        if parameter_info.default == Required:
+            required = True
+        else:
+            default_value = parameter_info.default
+    elif param.default == Required or param.default is param.empty:
+        required = True
+        parameter_info = ArgumentInfo()
+    else:
+        default_value = param.default
+        parameter_info = OptionInfo()
+
+    annotation = parse_param_annotation(param, default_value)
+    annotation_args = get_args(annotation)
+    is_list = lenient_issubclass(get_origin(annotation), list)
+    is_flag = None
+    if isinstance(parameter_info, OptionInfo):
+        if annotation is bool:
+            is_flag = True
+        elif (
+            is_list
+            and annotation_args == (bool,)
+            and parameter_info.param_decls
+            and any("/" in decl for decl in parameter_info.param_decls)
+        ):
+            is_flag = True
+    descriptor = resolve_type_descriptor(
+        annotation=annotation,
+        parameter_info=parameter_info,
+    )
+    tuple_nargs = descriptor.tuple_arity
+
+    if isinstance(parameter_info, OptionInfo):
+        default_option_name = get_default_option_flag_name(param.name)
+        if is_flag:
+            default_option_declaration = (
+                f"--{default_option_name}/--no-{default_option_name}"
+            )
+        else:
+            default_option_declaration = f"--{default_option_name}"
+        param_decls = [param.name]
+        if parameter_info.param_decls:
+            param_decls.extend(parameter_info.param_decls)
+        else:
+            param_decls.append(default_option_declaration)
+        return TyperOption(
+            # Option
+            param_decls=param_decls,
+            show_default=parameter_info.show_default,
+            prompt=parameter_info.prompt,
+            confirmation_prompt=parameter_info.confirmation_prompt,
+            prompt_required=parameter_info.prompt_required,
+            hide_input=parameter_info.hide_input,
+            is_flag=is_flag,
+            multiple=is_list,
+            count=parameter_info.count,
+            allow_from_autoenv=parameter_info.allow_from_autoenv,
+            help=parameter_info.help,
+            hidden=parameter_info.hidden,
+            show_choices=parameter_info.show_choices,
+            show_envvar=parameter_info.show_envvar,
+            # Parameter
+            required=required,
+            default=default_value,
+            callback=get_param_callback(callback=parameter_info.callback),
+            metavar=parameter_info.metavar,
+            expose_value=parameter_info.expose_value,
+            is_eager=parameter_info.is_eager,
+            envvar=parameter_info.envvar,
+            shell_complete=parameter_info.shell_complete,
+            autocompletion=get_param_completion(parameter_info.autocompletion),
+            min=parameter_info.min,
+            max=parameter_info.max,
+            nargs=tuple_nargs,
+            # Rich settings
+            rich_help_panel=parameter_info.rich_help_panel,
+            type_descriptor=descriptor,
+        )
+    elif isinstance(parameter_info, ArgumentInfo):
+        param_decls = [param.name]
+        nargs = None
+        if is_list:
+            nargs = -1
+        elif tuple_nargs is not None:
+            nargs = tuple_nargs
+        return TyperArgument(
+            # Argument
+            param_decls=param_decls,
+            required=required,
+            nargs=nargs,
+            # TyperArgument
+            show_default=parameter_info.show_default,
+            show_choices=parameter_info.show_choices,
+            show_envvar=parameter_info.show_envvar,
+            help=parameter_info.help,
+            hidden=parameter_info.hidden,
+            # Parameter
+            default=default_value,
+            callback=get_param_callback(callback=parameter_info.callback),
+            metavar=parameter_info.metavar,
+            expose_value=parameter_info.expose_value,
+            is_eager=parameter_info.is_eager,
+            envvar=parameter_info.envvar,
+            shell_complete=parameter_info.shell_complete,
+            autocompletion=get_param_completion(parameter_info.autocompletion),
+            min=parameter_info.min,
+            max=parameter_info.max,
+            # Rich settings
+            rich_help_panel=parameter_info.rich_help_panel,
+            type_descriptor=descriptor,
+        )
+    raise AssertionError("A Parameter should be returned")  # pragma: no cover
+
+
+def get_param_callback(
+    *,
+    callback: Callable[..., Any] | None = None,
+) -> Callable[..., Any] | None:
+    if not callback:
+        return None
+    parameters = get_params_from_function(callback)
+    ctx_name = None
+    param_arg_name = None
+    value_name = None
+    untyped_names: list[str] = []
+    for param_name, param_sig in parameters.items():
+        if lenient_issubclass(param_sig.annotation, _click.Context):
+            ctx_name = param_name
+        elif lenient_issubclass(param_sig.annotation, _click.Parameter):
+            param_arg_name = param_name
+        else:
+            untyped_names.append(param_name)
+    # Extract value param name first
+    if untyped_names:
+        value_name = untyped_names.pop()
+    # If context and parameter were not typed, extract them by position.
+    if untyped_names:
+        if ctx_name is None:
+            ctx_name = untyped_names.pop(0)
+        if param_arg_name is None:
+            if untyped_names:
+                param_arg_name = untyped_names.pop(0)
+        if untyped_names:
+            raise _click.ClickException(
+                "Too many CLI parameter callback function parameters"
+            )
+
+    def wrapper(ctx: _click.Context, param: _click.Parameter, value: Any) -> Any:
+        use_params: dict[str, Any] = {}
+        if ctx_name:
+            use_params[ctx_name] = ctx
+        if param_arg_name:
+            use_params[param_arg_name] = param
+        if value_name:
+            use_params[value_name] = _normalize_collection_value(param, value)
+        return callback(**use_params)
+
+    update_wrapper(wrapper, callback)
+    return wrapper
+
+
+def get_param_completion(
+    callback: Callable[..., Any] | None = None,
+) -> Callable[..., Any] | None:
+    if not callback:
+        return None
+    parameters = get_params_from_function(callback)
+    ctx_name = None
+    args_name = None
+    incomplete_name = None
+    unassigned_params = list(parameters.values())
+    for param_sig in unassigned_params[:]:
+        origin = get_origin(param_sig.annotation)
+        if lenient_issubclass(param_sig.annotation, _click.Context):
+            ctx_name = param_sig.name
+            unassigned_params.remove(param_sig)
+        elif lenient_issubclass(origin, list):
+            args_name = param_sig.name
+            unassigned_params.remove(param_sig)
+        elif lenient_issubclass(param_sig.annotation, str):
+            incomplete_name = param_sig.name
+            unassigned_params.remove(param_sig)
+    # If there are still unassigned parameters (not typed), extract by name
+    for param_sig in unassigned_params[:]:
+        if ctx_name is None and param_sig.name == "ctx":
+            ctx_name = param_sig.name
+            unassigned_params.remove(param_sig)
+        elif args_name is None and param_sig.name == "args":
+            args_name = param_sig.name
+            unassigned_params.remove(param_sig)
+        elif incomplete_name is None and param_sig.name == "incomplete":
+            incomplete_name = param_sig.name
+            unassigned_params.remove(param_sig)
+    # Extract value param name first
+    if unassigned_params:
+        show_params = " ".join([param.name for param in unassigned_params])
+        raise _click.ClickException(
+            f"Invalid autocompletion callback parameters: {show_params}"
+        )
+
+    def wrapper(ctx: _click.Context, args: list[str], incomplete: str | None) -> Any:
+        use_params: dict[str, Any] = {}
+        if ctx_name:
+            use_params[ctx_name] = ctx
+        if args_name:
+            use_params[args_name] = args
+        if incomplete_name:
+            use_params[incomplete_name] = incomplete
+        return callback(**use_params)
+
+    update_wrapper(wrapper, callback)
+    return wrapper
+
+
+def run(
+    function: Annotated[
+        Callable[..., Any],
+        Doc(
+            """
+            The function that should power this CLI application.
+            """
+        ),
+    ],
+) -> None:
+    """
+    This function converts a given function to a CLI application with `Typer()` and executes it.
+
+    ## Example
+
+    ```python
+    import typer
+
+    def main(name: str):
+        print(f"Hello {name}")
+
+    if __name__ == "__main__":
+        typer.run(main)
+    ```
+    """
+    app = Typer(add_completion=False)
+    app.command()(function)
+    app()
+
+
+def _is_macos() -> bool:
+    return platform.system() == "Darwin"
+
+
+def _is_linux_or_bsd() -> bool:
+    if platform.system() == "Linux":
+        return True
+
+    return "BSD" in platform.system()
+
+
+def launch(
+    url: Annotated[
+        str,
+        Doc(
+            """
+            URL or filename of the thing to launch.
+            """
+        ),
+    ],
+    wait: Annotated[
+        bool,
+        Doc(
+            """
+            Wait for the program to exit before returning. This only works if the launched program blocks.
+            """
+        ),
+    ] = False,
+    locate: Annotated[
+        bool,
+        Doc(
+            """
+            If this is set to `True`, then instead of launching the application associated with the URL, it will attempt to
+            launch a file manager with the file located. This might have weird effects if the URL does not point to the filesystem.
+            """
+        ),
+    ] = False,
+) -> int:
+    """
+    This function launches the given URL (or filename) in the default
+    viewer application for this file type.  If this is an executable, it
+    might launch the executable in a new session.  The return value is
+    the exit code of the launched application.  Usually, `0` indicates
+    success.
+
+    This function handles url in different operating systems separately:
+     - On macOS (Darwin), it uses the `open` command.
+     - On Linux and BSD, it uses `xdg-open` if available.
+     - On Windows (and other OSes), it uses the standard webbrowser module.
+
+    The function avoids, when possible, using the webbrowser module on Linux and macOS
+    to prevent spammy terminal messages from some browsers (e.g., Chrome).
+
+    ## Examples
+    ```python
+        import typer
+
+        typer.launch("https://typer.tiangolo.com/")
+    ```
+
+    ```python
+        import typer
+
+        typer.launch("/my/downloaded/file", locate=True)
+    ```
+    """
+
+    if url.startswith("http://") or url.startswith("https://"):
+        if _is_macos():
+            return subprocess.Popen(
+                ["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
+            ).wait()
+
+        has_xdg_open = _is_linux_or_bsd() and shutil.which("xdg-open") is not None
+
+        if has_xdg_open:
+            process = subprocess.Popen(
+                ["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
+            )
+            if wait:
+                return process.wait()
+            return 0
+
+        import webbrowser
+
+        webbrowser.open(url)
+
+        return 0
+
+    else:
+        return _click.launch(url, wait=wait, locate=locate)

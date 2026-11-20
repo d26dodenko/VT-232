@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: flake8-lint
+        name: Flake8 Python Linter
+        entry: flake8 qa_automation --max-line-length=120
+        language: system
+        pass_filenames: false
+      - id: unit-tests-fast
+        name: Fast Unit Tests
+        entry: pytest qa_automation/tests/unit
+        language: system
+        pass_filenames: false
